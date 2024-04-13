@@ -49,6 +49,7 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private GameObject playerSprite;
     [SerializeField] private GameObject hook;
     [SerializeField] private SpriteRenderer renderer;
+    [SerializeField] private Collider2D hookCollider;
     
     public PlayerState State { private set; get; }
     
@@ -107,6 +108,7 @@ public class PlayerMovement : MonoBehaviour
             }
             case PlayerState.HOOKED:
             {
+                hookCollider.enabled = true;
                 hook.SetActive(false);
                 break;
             }
@@ -140,7 +142,17 @@ public class PlayerMovement : MonoBehaviour
             }
             case PlayerState.HOOKED:
             {
-                line.SetPosition(0, handHooked);
+                if (renderer.flipX)
+                {
+                    handHooked.x = -handHooked.x;
+                    line.SetPosition(0, handHooked);
+                    handHooked.x = -handHooked.x;
+                }
+                else
+                    line.SetPosition(0, handHooked);
+
+                hookCollider.enabled = false;
+        
                 break;
             }
         }
