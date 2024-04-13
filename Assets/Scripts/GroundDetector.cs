@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class GroundDetector : MonoBehaviour
 {
@@ -35,9 +36,19 @@ public class GroundDetector : MonoBehaviour
 
     private void OnTriggerExit2D(Collider2D other)
     {
-        ContactPoint2D[] contacts = new ContactPoint2D[1];
-        int x = other.GetContacts(contacts);
-        if(playerMovement.State != PlayerState.JUMPING && playerMovement.State != PlayerState.DASHING)
-            playerMovement.ChangePlayerState(PlayerState.FALLING);
+        if (playerMovement.State != PlayerState.JUMPING && playerMovement.State != PlayerState.DASHING
+            && playerMovement.State != PlayerState.HOOKED)
+        {
+            ContactPoint2D[] contacts = new ContactPoint2D[1];
+            int x = other.GetContacts(contacts);
+            Invoke("ChangePlayerStateFalling", 0.05f);
+        }
+
     }
+    
+    void ChangePlayerStateFalling()
+    {
+        playerMovement.ChangePlayerState(PlayerState.FALLING);
+    }
+    
 }

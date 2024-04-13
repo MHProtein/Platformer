@@ -1,4 +1,5 @@
 using System;
+using Unity.Mathematics;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -10,10 +11,12 @@ public enum PlayerState
     FALLING,
     JUMPING,
     DANGLING,
-    DASHING
+    DASHING,
+    HOOKING,
+    HOOKED
 }
 
-[RequireComponent(typeof(Rigidbody2D), typeof(SpriteRenderer))]
+[RequireComponent(typeof(Rigidbody2D))]
 public class PlayerMovement : MonoBehaviour
 {
     public float velocity_h = 5.0f;
@@ -25,23 +28,36 @@ public class PlayerMovement : MonoBehaviour
     public float dashVelocityX = 30f;
     public float dashVelocityY = 80f;
     public Vector2 velocity;
+    public AnimationCurve curve;
+    public float ShootTime = 2.0f;
+    public float ExtractTime = 2.0f;
+    [FormerlySerializedAs("hoolCollided")] public bool hookCollided = false;
     
     private Rigidbody2D rigidBody;
-    private SpriteRenderer renderer;
     private bool jumpPressed = false;
     private float gravityMultiplier = 1.0f;
     private bool prematureRelease = false;
     private bool hasDashed = false;
+    private float input = 0.0f;
+    private bool hookingCanceled = false;
+    private Vector3 hookVelocity;
+    private Vector3 handHooking = new Vector3(0.07f, -0.25f, 0.0f);
+    private Vector3 handHooked = new Vector3(1.38f, 0.86f, 0.0f);
+    Vector3 mousePos;
 
+    [SerializeField] private LineRenderer line;
+    [SerializeField] private GameObject playerSprite;
+    [SerializeField] private GameObject hook;
+    [SerializeField] private SpriteRenderer renderer;
+    
     public PlayerState State { private set; get; }
-
+    
     public delegate void onStateChange(PlayerState newState);
     public static event onStateChange OnStateChange;
     
     private void Awake()
     {
         rigidBody = GetComponent<Rigidbody2D>();
-        renderer = GetComponent<SpriteRenderer>();
     }
 
     void Start()
@@ -51,6 +67,7 @@ public class PlayerMovement : MonoBehaviour
         Debug.Log("Ctrl to dangle");
         Debug.Log("Shift to dash");
         ChangePlayerState(PlayerState.FALLING);
+        
     }
     
     public void ChangePlayerState(PlayerState newState)
@@ -77,6 +94,22 @@ public class PlayerMovement : MonoBehaviour
                 renderer.color = Color.white;
                 break;
             }
+            case PlayerState.HOOKING:
+            {
+                if (hookingCanceled)
+                {
+                    line.SetPosition(1, line.GetPosition(0));
+                    hook.SetActive(false);
+                }
+                hookingCanceled = false;
+                hookCollided = false;
+                break;
+            }
+            case PlayerState.HOOKED:
+            {
+                hook.SetActive(false);
+                break;
+            }
         }
  
         State = newState;
@@ -87,12 +120,6 @@ public class PlayerMovement : MonoBehaviour
             {
                 hasDashed = false;
                 velocity.y = 0.0f;
-                break;
-            }
-            case PlayerState.FALLING:
-                break;
-            case PlayerState.JUMPING:
-            {
                 break;
             }
             case PlayerState.DANGLING:
@@ -106,8 +133,35 @@ public class PlayerMovement : MonoBehaviour
                 renderer.color = Color.red;
                 break;
             }
+            case PlayerState.HOOKING:
+            {
+                InitializeHooking();
+                break;
+            }
+            case PlayerState.HOOKED:
+            {
+                line.SetPosition(0, handHooked);
+                break;
+            }
         }
         OnStateChange?.Invoke(State);
+    }
+
+    void InitializeHooking()
+    {
+        line.SetPosition(0, handHooking);
+        line.SetPosition(1, handHooking);
+        velocity = Vector2.zero;
+        mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition) - transform.position;
+        mousePos.z = 0.0f;
+        Vector2 offset = mousePos - handHooking;
+        hook.SetActive(true);
+        hook.transform.eulerAngles = new Vector3(0.0f, 0.0f, -Mathf.Atan2(offset.x, offset.y) * Mathf.Rad2Deg);
+                
+        if (offset.x < 0)
+            renderer.flipX = true;
+        else 
+            renderer.flipX = false;
     }
 
     private void Update()
@@ -122,15 +176,17 @@ public class PlayerMovement : MonoBehaviour
                     jumpPressed = true;
                     Jump();
                 }
+                if (Input.GetMouseButtonDown(0))
+                {
+                    ChangePlayerState(PlayerState.HOOKING);   
+                }
                 Dash();
                 break;
             }
             case PlayerState.FALLING:
             case PlayerState.JUMPING:
-            {
                 Dash();
                 break;
-            }
             case PlayerState.DANGLING:
             {
                 if (Input.GetKey(KeyCode.LeftControl))
@@ -154,6 +210,12 @@ public class PlayerMovement : MonoBehaviour
                 }
                 break;
             }
+            case PlayerState.HOOKING:
+                Hooking();
+                break;
+            case PlayerState.HOOKED:
+                Hooked();
+                break;
         }
     }
     
@@ -191,7 +253,6 @@ public class PlayerMovement : MonoBehaviour
                 break;
             }
         }
-
         velocity.y = Math.Clamp(velocity.y, -maxVerticalVelocity, maxVerticalVelocity);
         rigidBody.velocity = velocity;
     }
@@ -207,6 +268,61 @@ public class PlayerMovement : MonoBehaviour
         velocity.y -= gravity * gravityMultiplier * Time.fixedDeltaTime;
     }
 
+    void Hooking()
+    {
+        if (hookingCanceled)
+        {
+            line.SetPosition(1, Vector3.SmoothDamp(line.GetPosition(1), 
+                line.GetPosition(0), ref hookVelocity, ShootTime));
+            hook.transform.localPosition = line.GetPosition(1);
+            if (hookVelocity.sqrMagnitude < 0.05f)
+            {
+                ChangePlayerState(PlayerState.IDLE);
+            }
+            return;
+        }
+        if (Input.GetMouseButton(0))
+        {
+            line.SetPosition(1, Vector3.SmoothDamp(line.GetPosition(1), 
+                mousePos, ref hookVelocity, ShootTime)); 
+            
+            hook.transform.localPosition = line.GetPosition(1);
+            if (hookVelocity.sqrMagnitude < 0.05f || hookCollided)
+            {
+                if (!hookCollided)
+                    hookingCanceled = true;
+                else
+                {
+                    ChangePlayerState(PlayerState.HOOKED);
+                    return;
+                }
+            }
+        }
+
+        if (Input.GetMouseButtonUp(0))
+        {
+            hookingCanceled = true;
+        }
+    }
+
+    void Hooked()
+    {
+        playerSprite.transform.localPosition = Vector3.SmoothDamp(playerSprite.transform.localPosition,
+            line.GetPosition(1), ref hookVelocity, ExtractTime);
+        line.SetPosition(0, Vector3.SmoothDamp(line.GetPosition(0), 
+            line.GetPosition(1), ref hookVelocity, ExtractTime));
+        
+        if (hookVelocity.sqrMagnitude < 0.05f)
+        {
+            line.SetPosition(1, line.GetPosition(0));
+            var pos = playerSprite.transform.localToWorldMatrix.GetPosition();
+            playerSprite.transform.localPosition = Vector3.zero;
+            hook.transform.localPosition = new Vector3(-0.918f, -0.837f, 0.0f);
+            transform.position = pos;
+            ChangePlayerState(PlayerState.FALLING);
+        }
+    }
+    
     void Dash()
     {
         if (Input.GetKeyDown(KeyCode.LeftShift))
@@ -221,7 +337,6 @@ public class PlayerMovement : MonoBehaviour
             velocity.y += input.y * dashVelocityY;
             ChangePlayerState(PlayerState.DASHING);
             Invoke("OnDashDone", 0.4f);
-         
         }
     }
 
@@ -240,18 +355,14 @@ public class PlayerMovement : MonoBehaviour
 
     void HorizontalMovement()
     {
-        float input = 0.0f;
-        if (Input.GetKey(KeyCode.A))
+        input = curve.Evaluate(Input.GetAxisRaw("Horizontal"));
+
+        if (input < 0.0f)
         {
             renderer.flipX = true;
-            input = -1.0f;
         }
-        if (Input.GetKey(KeyCode.D))
-        {
+        else
             renderer.flipX = false;
-            input = 1.0f;
-        }
-
         if (input != 0.0f)
         {
             if (State == PlayerState.IDLE)
@@ -295,5 +406,4 @@ public class PlayerMovement : MonoBehaviour
         prematureRelease = false;
         jumpPressed = false;
     }
-
 }

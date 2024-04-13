@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class WallDetector : MonoBehaviour
 {
@@ -38,4 +39,5 @@ public class WallDetector : MonoBehaviour
         if(playerMovement.State != PlayerState.JUMPING)
             playerMovement.ChangePlayerState(PlayerState.FALLING);
     }
+    
 }

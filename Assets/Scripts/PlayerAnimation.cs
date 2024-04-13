@@ -11,13 +11,15 @@ public class PlayerAnimation : MonoBehaviour
     int PLAYER_JUMP = Animator.StringToHash("Player_Jump");
     int PLAYER_FALL = Animator.StringToHash("Player_Fall");
     int PLAYER_DANGLE = Animator.StringToHash("Player_Dangle");
+    int PLAYER_HOOKING = Animator.StringToHash("Player_Hooking");
+    int PLAYER_HOOKED = Animator.StringToHash("Player_Hooked");
     private Animator animator;
-    private Rigidbody2D rigidbody;
     private bool isJumping = false;
+    [SerializeField] private Rigidbody2D rigidbody;
     private void Awake()
     {
         animator = GetComponent<Animator>();
-        rigidbody = GetComponentInParent<Rigidbody2D>();
+
     }
     
     private void OnEnable()
@@ -58,6 +60,16 @@ public class PlayerAnimation : MonoBehaviour
             case PlayerState.DANGLING:
             {
                 animator.Play(PLAYER_DANGLE);
+                break;
+            }
+            case PlayerState.HOOKING:
+            {
+                animator.Play(PLAYER_HOOKING);
+                break;
+            }
+            case PlayerState.HOOKED:
+            {
+                animator.Play(PLAYER_HOOKED);
                 break;
             }
         }
